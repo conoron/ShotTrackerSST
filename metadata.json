@@ -1,0 +1,5 @@
+{
+  "name": "Squash Shot Tracker",
+  "description": "A mobile-friendly app to track squash shots, winners, and mistakes on a virtual court.",
+  "requestFramePermissions": []
+}
