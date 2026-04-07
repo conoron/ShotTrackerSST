@@ -20,7 +20,9 @@ import {
   Layers,
   Timer,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  History,
+  Trash2
 } from 'lucide-react';
 
 type ShotType = 'winner' | 'mistake';
@@ -36,12 +38,25 @@ interface Shot {
   gameNumber: number;
 }
 
+interface MatchRecord {
+  id: string;
+  playerNames: Record<Player, string>;
+  gameWins: Record<Player, number>;
+  shots: Shot[];
+  startTime: number;
+  endTime: number;
+  duration: number;
+  winner: Player;
+}
+
 export default function App() {
   const [shots, setShots] = useState<Shot[]>([]);
   const [activePlayer, setActivePlayer] = useState<Player>('P1');
   const [activeType, setActiveType] = useState<ShotType>('winner');
   const [showStats, setShowStats] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [pastMatches, setPastMatches] = useState<MatchRecord[]>([]);
   const [isLogCollapsed, setIsLogCollapsed] = useState(true);
   const [statsMode, setStatsMode] = useState<'overall' | 'recent'>('overall');
   const [highlightedShotId, setHighlightedShotId] = useState<string | null>(null);
@@ -57,6 +72,21 @@ export default function App() {
     P2: 'Player 2',
   });
   const courtRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('squash_match_history');
+    if (saved) {
+      try {
+        setPastMatches(JSON.parse(saved));
+      } catch (e) {
+        console.error('Failed to load history', e);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('squash_match_history', JSON.stringify(pastMatches));
+  }, [pastMatches]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -99,6 +129,28 @@ export default function App() {
     setMatchStartTime(Date.now());
     setGameStartTime(Date.now());
     setShowResetConfirm(false);
+  };
+
+  const saveAndEndMatch = () => {
+    if (!matchWinner) return;
+
+    const record: MatchRecord = {
+      id: Math.random().toString(36).substring(7),
+      playerNames: { ...playerNames },
+      gameWins: { ...gameWins, [matchWinner]: gameWins[matchWinner] + 1 },
+      shots: [...shots],
+      startTime: matchStartTime,
+      endTime: Date.now(),
+      duration: now - matchStartTime,
+      winner: matchWinner,
+    };
+
+    setPastMatches([record, ...pastMatches]);
+    resetMatch();
+  };
+
+  const deleteMatchRecord = (id: string) => {
+    setPastMatches(pastMatches.filter(m => m.id !== id));
   };
 
   const getCurrentGameScore = () => {
@@ -309,6 +361,73 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* Match History Modal */}
+      <AnimatePresence>
+        {showHistory && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-slate-900 border border-slate-800 p-6 rounded-3xl max-w-md w-full shadow-2xl flex flex-col max-h-[80vh]"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-2">
+                  <History className="w-5 h-5 text-indigo-400" />
+                  <h2 className="text-xl font-bold">Match History</h2>
+                </div>
+                <button onClick={() => setShowHistory(false)} className="p-2 hover:bg-slate-800 rounded-full">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-4">
+                {pastMatches.length === 0 ? (
+                  <div className="py-12 text-center text-slate-500 italic">
+                    No matches saved yet.
+                  </div>
+                ) : (
+                  pastMatches.map((match) => (
+                    <div key={match.id} className="bg-slate-950 border border-slate-800 rounded-2xl p-4 relative group">
+                      <button 
+                        onClick={() => deleteMatchRecord(match.id)}
+                        className="absolute top-4 right-4 p-2 text-slate-600 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                      
+                      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">
+                        {new Date(match.endTime).toLocaleDateString()} • {new Date(match.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                      
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex flex-col">
+                          <span className={`text-sm font-bold ${match.winner === 'P1' ? 'text-indigo-400' : 'text-slate-400'}`}>
+                            {match.playerNames.P1}
+                          </span>
+                          <span className={`text-sm font-bold ${match.winner === 'P2' ? 'text-amber-400' : 'text-slate-400'}`}>
+                            {match.playerNames.P2}
+                          </span>
+                        </div>
+                        <div className="flex flex-col items-end font-mono font-black text-lg">
+                          <span className={match.winner === 'P1' ? 'text-white' : 'text-slate-600'}>{match.gameWins.P1}</span>
+                          <span className={match.winner === 'P2' ? 'text-white' : 'text-slate-600'}>{match.gameWins.P2}</span>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-900 text-[10px] text-slate-500 font-bold uppercase">
+                        <span>{match.shots.length} Shots</span>
+                        <span>{formatDuration(match.duration)}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Reset Confirmation Modal */}
       <AnimatePresence>
         {showResetConfirm && (
@@ -389,11 +508,11 @@ export default function App() {
               
               <div className="flex flex-col gap-4">
                 <button 
-                  onClick={resetMatch}
+                  onClick={saveAndEndMatch}
                   className="w-full py-5 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-2xl shadow-xl shadow-indigo-500/20 transition-all active:scale-95 flex items-center justify-center gap-3"
                 >
-                  <RotateCcw className="w-6 h-6" />
-                  New Match
+                  <History className="w-6 h-6" />
+                  Save & End Match
                 </button>
                 <button 
                   onClick={undoLastShot}
@@ -482,6 +601,13 @@ export default function App() {
 
         <div className="flex gap-2">
           <button 
+            onClick={() => setShowHistory(true)}
+            className="p-2 hover:bg-slate-800 rounded-full transition-colors"
+            title="Match History"
+          >
+            <History className="w-5 h-5 text-indigo-400" />
+          </button>
+          <button 
             onClick={() => setShowSettings(true)}
             className="p-2 hover:bg-slate-800 rounded-full transition-colors"
           >
@@ -520,327 +646,310 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-md mx-auto p-4 flex flex-col gap-6">
-        {/* Live Score Display */}
-        <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 shadow-xl flex items-center justify-between">
-          <div className={`flex flex-col items-center gap-1 transition-opacity ${activePlayer === 'P1' ? 'opacity-100' : 'opacity-40'}`}>
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{playerNames.P1}</span>
-            <span className="text-4xl font-black font-mono text-white leading-none">{currentScore.p1}</span>
-          </div>
-          
-          <div className="flex flex-col items-center">
-            <div className="h-8 w-[1px] bg-slate-800 mb-2" />
-            <span className="text-[10px] font-black text-slate-700 uppercase tracking-[0.2em]">Score</span>
-            <div className="h-8 w-[1px] bg-slate-800 mt-2" />
-          </div>
-
-          <div className={`flex flex-col items-center gap-1 transition-opacity ${activePlayer === 'P2' ? 'opacity-100' : 'opacity-40'}`}>
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{playerNames.P2}</span>
-            <span className="text-4xl font-black font-mono text-white leading-none">{currentScore.p2}</span>
-          </div>
-        </div>
-
-        {/* Heatmap Controls */}
-        <AnimatePresence>
-          {showHeatmap && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              className="overflow-hidden bg-slate-900 rounded-2xl border border-slate-800 shadow-xl"
-            >
-              <div className="p-3 flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2 text-orange-400 font-bold text-xs uppercase tracking-wider">
-                  <Flame className="w-4 h-4" /> Heatmap
-                </div>
-                <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800">
-                  {(['All', 'P1', 'P2'] as const).map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => setHeatmapPlayer(p)}
-                      className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${
-                        heatmapPlayer === p 
-                          ? 'bg-orange-600 text-white shadow-lg' 
-                          : 'text-slate-500 hover:text-slate-300'
-                      }`}
-                    >
-                      {p === 'All' ? 'Both' : playerNames[p]}
-                    </button>
-                  ))}
-                </div>
+      <main className="max-w-7xl mx-auto p-4 lg:p-8 flex flex-col lg:flex-row gap-8">
+        {/* Left Column: Squash Court & Legend */}
+        <div className="flex-1 flex flex-col gap-6 max-w-2xl mx-auto lg:mx-0 w-full">
+          {/* Dashboard Grid (Moved to be above court) */}
+          <div className={`grid gap-4 ${showHeatmap ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+            {/* Selection Controls */}
+            <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 shadow-xl flex flex-col justify-center gap-3 h-32">
+              <div className="flex bg-slate-950 rounded-xl p-1 border border-slate-800">
+                {(['P1', 'P2'] as Player[]).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setActivePlayer(p)}
+                    className={`flex-1 py-2 rounded-lg transition-all truncate px-3 flex items-center justify-between ${
+                      activePlayer === p 
+                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' 
+                        : 'text-slate-500 hover:text-slate-300'
+                    }`}
+                  >
+                    <span className="text-xs font-bold uppercase tracking-wider">{playerNames[p]}</span>
+                    <span className={`font-mono font-black text-lg ${activePlayer === p ? 'text-white' : 'text-slate-400'}`}>
+                      {p === 'P1' ? currentScore.p1 : currentScore.p2}
+                    </span>
+                  </button>
+                ))}
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+              <div className="flex bg-slate-950 rounded-xl p-1 border border-slate-800">
+                {(['winner', 'mistake'] as ShotType[]).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setActiveType(t)}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      activeType === t 
+                        ? t === 'winner' ? 'bg-emerald-600 text-white shadow-emerald-500/20' : 'bg-rose-600 text-white shadow-rose-500/20'
+                        : 'text-slate-500 hover:text-slate-300'
+                    }`}
+                  >
+                    {t.charAt(0).toUpperCase() + t.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-        {/* Controls */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="flex flex-col gap-2">
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Player</label>
-            <div className="flex bg-slate-900 rounded-xl p-1 border border-slate-800">
-              {(['P1', 'P2'] as Player[]).map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setActivePlayer(p)}
-                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all truncate px-2 ${
-                    activePlayer === p 
-                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' 
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
+            {/* Heatmap Controls (Conditional) */}
+            <AnimatePresence>
+              {showHeatmap && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="bg-slate-900 rounded-2xl border border-slate-800 p-4 shadow-xl flex flex-col justify-center gap-3 h-32"
                 >
-                  {playerNames[p]}
-                </button>
+                  <div className="flex items-center gap-2 text-orange-400 font-bold text-[10px] uppercase tracking-wider mb-1">
+                    <Flame className="w-3 h-3" /> Heatmap Filter
+                  </div>
+                  <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800">
+                    {(['All', 'P1', 'P2'] as const).map((p) => (
+                      <button
+                        key={p}
+                        onClick={() => setHeatmapPlayer(p)}
+                        className={`flex-1 py-1.5 text-[10px] font-bold rounded-md transition-all ${
+                          heatmapPlayer === p 
+                            ? 'bg-orange-600 text-white shadow-lg' 
+                            : 'text-slate-500 hover:text-slate-300'
+                        }`}
+                      >
+                        {p === 'All' ? 'Both' : playerNames[p]}
+                      </button>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Squash Court */}
+          <div className="relative w-full aspect-[6.4/9.75] bg-[#1e293b] rounded-lg border-4 border-slate-700 overflow-hidden shadow-2xl"
+               ref={courtRef}
+               onClick={handleCourtClick}>
+            {/* Zone Grid Lines (Subtle) */}
+            <div className="absolute inset-0 pointer-events-none opacity-10">
+              {/* Vertical lines */}
+              <div className="absolute left-[33.3%] top-0 w-[1px] h-full bg-slate-400" />
+              <div className="absolute left-[66.6%] top-0 w-[1px] h-full bg-slate-400" />
+              {/* Horizontal lines */}
+              <div className="absolute top-[33.3%] left-0 w-full h-[1px] bg-slate-400" />
+              <div className="absolute top-[66.6%] left-0 w-full h-[1px] bg-slate-400" />
+            </div>
+
+            {/* Court Lines */}
+            {/* Front Wall Line */}
+            <div className="absolute top-0 left-0 w-full h-[2px] bg-rose-500/50" />
+            
+            {/* Short Line (approx 4.26m from back wall, court is 9.75m long) */}
+            <div className="absolute top-[56.3%] left-0 w-full h-[2px] bg-rose-500/50" />
+            
+            {/* Half Court Line */}
+            <div className="absolute top-[56.3%] left-1/2 w-[2px] h-[43.7%] bg-rose-500/50" />
+            
+            {/* Service Boxes */}
+            <div className="absolute top-[56.3%] left-0 w-[25%] h-[16.4%] border-r-2 border-b-2 border-rose-500/50" />
+            <div className="absolute top-[56.3%] right-0 w-[25%] h-[16.4%] border-l-2 border-b-2 border-rose-500/50" />
+
+            {/* Heatmap Overlay */}
+            {showHeatmap && <HeatmapOverlay shots={shots} playerFilter={heatmapPlayer} />}
+
+            {/* Shots */}
+            <AnimatePresence>
+              {shots.map((shot) => (
+                <motion.div
+                  key={shot.id}
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ 
+                    scale: highlightedShotId === shot.id ? 1.5 : 1,
+                    opacity: 1,
+                    zIndex: highlightedShotId === shot.id ? 10 : 1
+                  }}
+                  exit={{ scale: 0, opacity: 0 }}
+                  className={`absolute w-4 h-4 -ml-2 -mt-2 rounded-full border-2 flex items-center justify-center shadow-lg pointer-events-none transition-all duration-300 ${
+                    highlightedShotId === shot.id ? 'ring-4 ring-white ring-opacity-50' : ''
+                  } ${
+                    shot.player === 'P1' ? 'border-indigo-400' : 'border-amber-400'
+                  } ${
+                    shot.type === 'winner' ? 'bg-emerald-500' : 'bg-rose-500'
+                  }`}
+                  style={{ left: `${shot.x}%`, top: `${shot.y}%` }}
+                >
+                  <span className="text-[8px] font-bold text-white">
+                    {playerNames[shot.player].charAt(0).toUpperCase()}
+                  </span>
+                  {highlightedShotId === shot.id && (
+                    <motion.div 
+                      layoutId="highlight-ring"
+                      className="absolute inset-0 rounded-full border-2 border-white animate-ping"
+                    />
+                  )}
+                </motion.div>
               ))}
+            </AnimatePresence>
+
+            {/* Court Label */}
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-slate-600 text-[10px] font-bold uppercase tracking-[0.2em] pointer-events-none">
+              Back Wall
+            </div>
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 text-slate-600 text-[10px] font-bold uppercase tracking-[0.2em] pointer-events-none">
+              Front Wall
             </div>
           </div>
-          <div className="flex flex-col gap-2">
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Shot Type</label>
-            <div className="flex bg-slate-900 rounded-xl p-1 border border-slate-800">
-              {(['winner', 'mistake'] as ShotType[]).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setActiveType(t)}
-                  className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
-                    activeType === t 
-                      ? t === 'winner' ? 'bg-emerald-600 text-white shadow-emerald-500/20' : 'bg-rose-600 text-white shadow-rose-500/20'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  {t.charAt(0).toUpperCase() + t.slice(1)}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
 
-        {/* Prominent Quick Undo */}
-        <button
-          onClick={undoLastShot}
-          disabled={shots.length === 0}
-          className="w-full py-4 bg-slate-900 hover:bg-slate-800 border-2 border-indigo-500/20 rounded-xl flex items-center justify-center gap-3 text-indigo-400 font-bold transition-all active:scale-95 disabled:opacity-30 disabled:active:scale-100 shadow-xl"
-        >
-          <Undo2 className="w-5 h-5" />
-          Undo Last Shot
-        </button>
-
-        {/* Stats Overlay/Panel */}
-        <AnimatePresence>
-          {showStats && (
-            <motion.div 
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              className="overflow-hidden bg-slate-900 rounded-2xl border border-slate-800 shadow-xl"
-            >
-              {/* Stats Mode Toggle */}
-              <div className="flex justify-center p-2 border-b border-slate-800 bg-slate-900/50">
-                <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800">
-                  <button 
-                    onClick={() => setStatsMode('overall')}
-                    className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-2 ${statsMode === 'overall' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
-                  >
-                    <BarChart3 className="w-3 h-3" />
-                    Overall
-                  </button>
-                  <button 
-                    onClick={() => setStatsMode('recent')}
-                    className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-2 ${statsMode === 'recent' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
-                  >
-                    <Clock className="w-3 h-3" />
-                    Last 5 Points
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-4 grid grid-cols-2 gap-8">
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-indigo-400 font-bold border-b border-slate-800 pb-2 truncate">
-                    <User className="w-4 h-4 flex-shrink-0" /> {playerNames.P1}
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Winners</span>
-                    <span className="text-emerald-400 font-mono">{p1Stats.winners}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Mistakes</span>
-                    <span className="text-rose-400 font-mono">{p1Stats.mistakes}</span>
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-indigo-400 font-bold border-b border-slate-800 pb-2 truncate">
-                    <User className="w-4 h-4 flex-shrink-0" /> {playerNames.P2}
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Winners</span>
-                    <span className="text-emerald-400 font-mono">{p2Stats.winners}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Mistakes</span>
-                    <span className="text-rose-400 font-mono">{p2Stats.mistakes}</span>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Shot History (Collapsible) */}
-        <div className="bg-slate-900 rounded-2xl border border-slate-800 shadow-xl overflow-hidden">
-          <button 
-            onClick={() => setIsLogCollapsed(!isLogCollapsed)}
-            className="w-full p-4 flex items-center justify-between hover:bg-slate-800/50 transition-colors"
-          >
+          {/* Legend */}
+          <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-xs font-medium text-slate-400 bg-slate-900/50 p-3 rounded-xl border border-slate-800/50">
             <div className="flex items-center gap-2">
-              <List className="w-4 h-4 text-indigo-400" />
-              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Shot History</h3>
-              {isLogCollapsed ? <ChevronDown className="w-4 h-4 text-slate-600" /> : <ChevronUp className="w-4 h-4 text-slate-600" />}
+              <div className="w-3 h-3 rounded-full bg-emerald-500" /> Winner
             </div>
-            <span className="text-xs text-slate-500">{shots.length} shots</span>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-rose-500" /> Mistake
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full border border-indigo-400" /> {playerNames.P1}
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full border border-amber-400" /> {playerNames.P2}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: Dashboard, Stats, History */}
+        <div className="flex-1 flex flex-col gap-6">
+          {/* Prominent Quick Undo */}
+          <button
+            onClick={undoLastShot}
+            disabled={shots.length === 0}
+            className="w-full py-4 bg-slate-900 hover:bg-slate-800 border-2 border-indigo-500/20 rounded-xl flex items-center justify-center gap-3 text-indigo-400 font-bold transition-all active:scale-95 disabled:opacity-30 disabled:active:scale-100 shadow-xl"
+          >
+            <Undo2 className="w-5 h-5" />
+            Undo Last Shot
           </button>
-          
+
+          {/* Stats Overlay/Panel */}
           <AnimatePresence>
-            {!isLogCollapsed && (
-              <motion.div
+            {showStats && (
+              <motion.div 
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
-                className="px-4 pb-4"
+                className="overflow-hidden bg-slate-900 rounded-2xl border border-slate-800 shadow-xl"
               >
-                <div className="max-h-60 overflow-y-auto flex flex-col gap-2 pr-1 custom-scrollbar pt-2 border-t border-slate-800">
-                  {shots.length === 0 ? (
-                    <div className="py-8 text-center text-slate-600 text-sm italic">
-                      No shots recorded yet
+                {/* Stats Mode Toggle */}
+                <div className="flex justify-center p-2 border-b border-slate-800 bg-slate-900/50">
+                  <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800">
+                    <button 
+                      onClick={() => setStatsMode('overall')}
+                      className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-2 ${statsMode === 'overall' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+                    >
+                      <BarChart3 className="w-3 h-3" />
+                      Overall
+                    </button>
+                    <button 
+                      onClick={() => setStatsMode('recent')}
+                      className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all flex items-center gap-2 ${statsMode === 'recent' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+                    >
+                      <Clock className="w-3 h-3" />
+                      Last 5 Points
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-4 grid grid-cols-2 gap-8">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-indigo-400 font-bold border-b border-slate-800 pb-2 truncate">
+                      <User className="w-4 h-4 flex-shrink-0" /> {playerNames.P1}
                     </div>
-                  ) : (
-                    [...shots].reverse().map((shot) => (
-                      <motion.div
-                        key={shot.id}
-                        onClick={() => setHighlightedShotId(shot.id === highlightedShotId ? null : shot.id)}
-                        className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
-                          highlightedShotId === shot.id 
-                            ? 'bg-indigo-500/20 border-indigo-500 shadow-lg shadow-indigo-500/10' 
-                            : 'bg-slate-950 border-slate-800 hover:border-slate-700'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className={`w-2 h-8 rounded-full ${shot.type === 'winner' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                          <div>
-                            <div className="text-sm font-bold flex items-center gap-2">
-                              <span className={shot.player === 'P1' ? 'text-indigo-400' : 'text-amber-400'}>
-                                {playerNames[shot.player]}
-                              </span>
-                              <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase ${
-                                shot.type === 'winner' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'
-                              }`}>
-                                {shot.type}
-                              </span>
-                            </div>
-                            <div className="text-[10px] text-slate-500 font-medium">
-                              {getApproxLocation(shot.x, shot.y)}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-[10px] text-slate-600 font-mono">
-                          {new Date(shot.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                        </div>
-                      </motion.div>
-                    ))
-                  )}
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-400">Winners</span>
+                      <span className="text-emerald-400 font-mono">{p1Stats.winners}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-400">Mistakes</span>
+                      <span className="text-rose-400 font-mono">{p1Stats.mistakes}</span>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-indigo-400 font-bold border-b border-slate-800 pb-2 truncate">
+                      <User className="w-4 h-4 flex-shrink-0" /> {playerNames.P2}
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-400">Winners</span>
+                      <span className="text-emerald-400 font-mono">{p2Stats.winners}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-400">Mistakes</span>
+                      <span className="text-rose-400 font-mono">{p2Stats.mistakes}</span>
+                    </div>
+                  </div>
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
 
-        {/* Squash Court */}
-        <div className="relative w-full aspect-[6.4/9.75] bg-[#1e293b] rounded-lg border-4 border-slate-700 overflow-hidden shadow-2xl"
-             ref={courtRef}
-             onClick={handleCourtClick}>
-          {/* Zone Grid Lines (Subtle) */}
-          <div className="absolute inset-0 pointer-events-none opacity-10">
-            {/* Vertical lines */}
-            <div className="absolute left-[33.3%] top-0 w-[1px] h-full bg-slate-400" />
-            <div className="absolute left-[66.6%] top-0 w-[1px] h-full bg-slate-400" />
-            {/* Horizontal lines */}
-            <div className="absolute top-[33.3%] left-0 w-full h-[1px] bg-slate-400" />
-            <div className="absolute top-[66.6%] left-0 w-full h-[1px] bg-slate-400" />
-          </div>
-
-          {/* Court Lines */}
-          {/* Front Wall Line */}
-          <div className="absolute top-0 left-0 w-full h-[2px] bg-rose-500/50" />
-          
-          {/* Short Line (approx 4.26m from back wall, court is 9.75m long) */}
-          {/* 4.26 / 9.75 = ~43.7% from back wall, so 100 - 43.7 = 56.3% from front wall */}
-          <div className="absolute top-[56.3%] left-0 w-full h-[2px] bg-rose-500/50" />
-          
-          {/* Half Court Line */}
-          <div className="absolute top-[56.3%] left-1/2 w-[2px] h-[43.7%] bg-rose-500/50" />
-          
-          {/* Service Boxes */}
-          {/* Width 1.6m, Length 1.6m. 1.6 / 6.4 = 25% width. 1.6 / 9.75 = ~16.4% length */}
-          <div className="absolute top-[56.3%] left-0 w-[25%] h-[16.4%] border-r-2 border-b-2 border-rose-500/50" />
-          <div className="absolute top-[56.3%] right-0 w-[25%] h-[16.4%] border-l-2 border-b-2 border-rose-500/50" />
-
-          {/* Heatmap Overlay */}
-          {showHeatmap && <HeatmapOverlay shots={shots} playerFilter={heatmapPlayer} />}
-
-          {/* Shots */}
-          <AnimatePresence>
-            {shots.map((shot) => (
-              <motion.div
-                key={shot.id}
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ 
-                  scale: highlightedShotId === shot.id ? 1.5 : 1,
-                  opacity: 1,
-                  zIndex: highlightedShotId === shot.id ? 10 : 1
-                }}
-                exit={{ scale: 0, opacity: 0 }}
-                className={`absolute w-4 h-4 -ml-2 -mt-2 rounded-full border-2 flex items-center justify-center shadow-lg pointer-events-none transition-all duration-300 ${
-                  highlightedShotId === shot.id ? 'ring-4 ring-white ring-opacity-50' : ''
-                } ${
-                  shot.player === 'P1' ? 'border-indigo-400' : 'border-amber-400'
-                } ${
-                  shot.type === 'winner' ? 'bg-emerald-500' : 'bg-rose-500'
-                }`}
-                style={{ left: `${shot.x}%`, top: `${shot.y}%` }}
-              >
-                <span className="text-[8px] font-bold text-white">
-                  {playerNames[shot.player].charAt(0).toUpperCase()}
-                </span>
-                {highlightedShotId === shot.id && (
-                  <motion.div 
-                    layoutId="highlight-ring"
-                    className="absolute inset-0 rounded-full border-2 border-white animate-ping"
-                  />
-                )}
-              </motion.div>
-            ))}
-          </AnimatePresence>
-
-          {/* Court Label */}
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-slate-600 text-[10px] font-bold uppercase tracking-[0.2em] pointer-events-none">
-            Back Wall
-          </div>
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 text-slate-600 text-[10px] font-bold uppercase tracking-[0.2em] pointer-events-none">
-            Front Wall
-          </div>
-        </div>
-
-        {/* Legend */}
-        <div className="flex justify-center gap-6 text-xs font-medium text-slate-400">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-emerald-500" /> Winner
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-rose-500" /> Mistake
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full border border-indigo-400" /> {playerNames.P1}
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full border border-amber-400" /> {playerNames.P2}
+          {/* Shot History (Collapsible) */}
+          <div className="bg-slate-900 rounded-2xl border border-slate-800 shadow-xl overflow-hidden">
+            <button 
+              onClick={() => setIsLogCollapsed(!isLogCollapsed)}
+              className="w-full p-4 flex items-center justify-between hover:bg-slate-800/50 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <List className="w-4 h-4 text-indigo-400" />
+                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Shot History</h3>
+                {isLogCollapsed ? <ChevronDown className="w-4 h-4 text-slate-600" /> : <ChevronUp className="w-4 h-4 text-slate-600" />}
+              </div>
+              <span className="text-xs text-slate-500">{shots.length} shots</span>
+            </button>
+            
+            <AnimatePresence>
+              {!isLogCollapsed && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="px-4 pb-4"
+                >
+                  <div className="max-h-60 overflow-y-auto flex flex-col gap-2 pr-1 custom-scrollbar pt-2 border-t border-slate-800">
+                    {shots.length === 0 ? (
+                      <div className="py-8 text-center text-slate-600 text-sm italic">
+                        No shots recorded yet
+                      </div>
+                    ) : (
+                      [...shots].reverse().map((shot) => (
+                        <motion.div
+                          key={shot.id}
+                          onClick={() => setHighlightedShotId(shot.id === highlightedShotId ? null : shot.id)}
+                          className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                            highlightedShotId === shot.id 
+                              ? 'bg-indigo-500/20 border-indigo-500 shadow-lg shadow-indigo-500/10' 
+                              : 'bg-slate-950 border-slate-800 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-2 h-8 rounded-full ${shot.type === 'winner' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                            <div>
+                              <div className="text-sm font-bold flex items-center gap-2">
+                                <span className={shot.player === 'P1' ? 'text-indigo-400' : 'text-amber-400'}>
+                                  {playerNames[shot.player]}
+                                </span>
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded uppercase ${
+                                  shot.type === 'winner' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'
+                                }`}>
+                                  {shot.type}
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-slate-500 font-medium">
+                                {getApproxLocation(shot.x, shot.y)}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-[10px] text-slate-600 font-mono">
+                            {new Date(shot.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                          </div>
+                        </motion.div>
+                      ))
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </main>
