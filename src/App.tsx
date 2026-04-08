@@ -504,6 +504,10 @@ export default function App() {
                   3 - {matchWinner === 'P1' ? gameWins.P2 : gameWins.P1}
                 </span>
                 <span className="text-xs text-slate-500 mt-2 block uppercase tracking-widest">Final Game Score: {currentScore.p1} - {currentScore.p2}</span>
+                <div className="mt-6 flex items-center justify-center gap-2 text-slate-400 font-mono text-sm">
+                  <Timer className="w-4 h-4 text-indigo-400" />
+                  Match Duration: {formatDuration(matchDuration)}
+                </div>
               </p>
               
               <div className="flex flex-col gap-4">
@@ -543,6 +547,7 @@ export default function App() {
                 <span className="text-3xl font-mono text-white mt-2 block">
                   {currentScore.p1} - {currentScore.p2}
                 </span>
+                <span className="text-xs text-slate-500 mt-2 block uppercase tracking-widest">Game Duration: {formatDuration(gameDuration)}</span>
               </p>
               <div className="flex flex-col gap-3">
                 <button 
@@ -582,17 +587,17 @@ export default function App() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4 mr-auto ml-8">
-          <div className="flex flex-col items-center">
-            <span className="text-[8px] font-bold text-slate-500 uppercase tracking-tighter">Match Time</span>
-            <div className="flex items-center gap-1 text-xs font-mono font-bold text-slate-300">
-              <Timer className="w-3 h-3 text-indigo-400" />
+        <div className="flex items-center gap-6 mx-auto">
+          <div className="flex flex-col items-center bg-slate-950 px-4 py-1.5 rounded-xl border border-slate-800 shadow-inner">
+            <span className="text-[9px] font-black text-indigo-400 uppercase tracking-[0.2em] mb-0.5">Match Duration</span>
+            <div className="flex items-center gap-2 text-xl font-mono font-black text-white">
+              <Timer className="w-4 h-4 text-indigo-500" />
               {formatDuration(matchDuration)}
             </div>
           </div>
-          <div className="flex flex-col items-center">
+          <div className="hidden sm:flex flex-col items-center opacity-60">
             <span className="text-[8px] font-bold text-slate-500 uppercase tracking-tighter">Game Time</span>
-            <div className="flex items-center gap-1 text-xs font-mono font-bold text-slate-300">
+            <div className="flex items-center gap-1 text-sm font-mono font-bold text-slate-300">
               <Clock className="w-3 h-3 text-amber-400" />
               {formatDuration(gameDuration)}
             </div>
